@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Meteora 交易对分析</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.datatables.net/1.11.5/css/dataTables.bootstrap5.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="header-container">
+            <h1>Meteora 交易对分析</h1>
+            <div>
+                <button id="refreshButton" class="btn btn-primary">
+                    刷新数据
+                </button>
+                <div id="lastUpdate">最后更新: {{ last_update }}</div>
+            </div>
+        </div>
+
+        <div class="filter-controls mb-4">
+            <div class="row">
+                <div class="col-md-3">
+                    <label for="minApr">最小 APR (%)</label>
+                    <input type="number" class="form-control" id="minApr" value="50">
+                </div>
+                <div class="col-md-3">
+                    <label for="maxApr">最大 APR (%)</label>
+                    <input type="number" class="form-control" id="maxApr" value="500">
+                </div>
+                <div class="col-md-3">
+                    <label for="minVolume">最小交易量</label>
+                    <input type="number" class="form-control" id="minVolume" value="200000">
+                </div>
+                <div class="col-md-3">
+                    <label for="minLiquidity">最小流动性</label>
+                    <input type="number" class="form-control" id="minLiquidity" value="10000">
+                </div>
+            </div>
+        </div>
+
+        <div class="table-container">
+            <table id="pairsTable" class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>交易对</th>
+                        <th>流动性</th>
+                        <th>基础费率(%)</th>
+                        <th>24H交易量</th>
+                        <th>24H费用</th>
+                        <th>5min交易量</th>
+                        <th>5min费用</th>
+                        <th>5min APR(%)</th>
+                        <th>APR(%)</th>
+                        <th>FDV</th>
+                        <th>Dexscreener</th>
+                    </tr>
+                </thead>
+                <tbody>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/jquery.dataTables.min.js"></script>
+    <script src="https://cdn.datatables.net/1.11.5/js/dataTables.bootstrap5.min.js"></script>
+    <script>
+        let dataTable;
+
+        function formatFDV(value) {
+            if (value >= 1000000) {
+                return (value / 1000000).toFixed(1) + 'M';
+            } else if (value >= 1000) {
+                return (value / 1000).toFixed(0) + 'K';
+            }
+            return value.toFixed(0);
+        }
+
+        function updateTable(result) {
+            console.log('更新表格的数据:', result);
+
+            if (dataTable) {
+                dataTable.destroy();
+            }
+
+            const data = result.data || [];
+            console.log('处理后的表格数据:', data);
+
+            dataTable = $('#pairsTable').DataTable({
+                data: data,
+                columns: [
+                    { 
+                        data: 'pair_name',
+                        render: function(data, type, row) {
+                            return `<a href="${row.pair_link}" target="_blank">${data}</a>`;
+                        }
+                    },
+                    { data: 'liquidity' },
+                    { data: 'base_fee' },
+                    { data: 'trade_volume_24h' },
+                    { data: 'fees_24h' },
+                    { data: 'volume_5min' },
+                    { data: 'fees_5min' },
+                    { data: 'apd_5min' },
+                    { data: 'apr' },
+                    { 
+                        data: 'fdv',
+                        render: function(data, type, row) {
+                            if (type === 'display') {
+                                if (data >= 1000000) {
+                                    return (data / 1000000).toFixed(1) + 'M';
+                                } else if (data >= 1000) {
+                                    return (data / 1000).toFixed(0) + 'K';
+                                }
+                                return data.toFixed(0);
+                            }
+                            return data;
+                        }
+                    },
+                    { 
+                        data: 'dex_name',
+                        render: function(data, type, row) {
+                            return `<a href="${row.dex_link}" target="_blank">${data}</a>`;
+                        }
+                    }
+                ],
+                order: [[7, 'desc']],
+                pageLength: 25,
+                language: {
+                    emptyTable: "没有符合条件的数据"
+                }
+            });
+        }
+
+        function updateLastUpdate(time) {
+            document.getElementById('lastUpdate').textContent = `最后更新: ${time}`;
+        }
+
+        async function fetchData() {
+            // 禁用刷新按钮
+            const refreshButton = document.getElementById('refreshButton');
+            refreshButton.disabled = true;
+            refreshButton.innerHTML = '数据加载中...';
+
+            try {
+                // 获取输入值并转换为数字
+                const minApr = Number(document.getElementById('minApr').value);
+                const maxApr = Number(document.getElementById('maxApr').value);
+                const minVolume = Number(document.getElementById('minVolume').value);
+                const minLiquidity = Number(document.getElementById('minLiquidity').value);
+
+                console.log('发送参数:', { minApr, maxApr, minVolume, minLiquidity });
+
+                const queryParams = new URLSearchParams({
+                    min_apr: minApr,
+                    max_apr: maxApr,
+                    min_volume: minVolume,
+                    min_liquidity: minLiquidity
+                });
+
+                const response = await fetch(`/api/data?${queryParams.toString()}`);
+                const result = await response.json();
+                
+                if (result.status === 'success') {
+                    updateTable(result);
+                    if (result.last_update) {
+                        document.getElementById('lastUpdate').textContent = `最后更新: ${result.last_update}`;
+                    }
+                } else {
+                    console.error('获取数据失败:', result.error);
+                }
+            } catch (error) {
+                console.error('获取数据失败:', error);
+            } finally {
+                // 恢复刷新按钮状态
+                refreshButton.disabled = false;
+                refreshButton.innerHTML = '刷新数据';
+            }
+        }
+
+        // 页面加载完成后自动加载数据
+        document.addEventListener('DOMContentLoaded', async () => {
+            await fetchData();
+        });
+
+        // 移除之前的 loadData 函数，直接使用 fetchData
+        document.getElementById('refreshButton').addEventListener('click', fetchData);
+    </script>
+</body>
+</html> 
