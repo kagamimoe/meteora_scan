@@ -38,7 +38,7 @@ async def fetch_all_pages() -> List[Dict]:
     print("\n=== 开始获取页面数据 ===")
     all_data = []
     page = 0
-    MAX_PAGES = 10  # 添加最大页数限制
+    MAX_PAGES = 5  # 添加最大页数限制
     
     try:
         while page < MAX_PAGES:  # 修改循环条件
